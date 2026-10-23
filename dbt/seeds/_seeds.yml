@@ -1,0 +1,10 @@
+version: 2
+
+seeds:
+  - name: all_star_games
+    description: Date of each season's All-Star Game. Add a row when ingesting a new season.
+    columns:
+      - name: season
+        data_tests: [unique, not_null]
+      - name: all_star_date
+        data_tests: [not_null]

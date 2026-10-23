@@ -29,3 +29,31 @@ models:
         description: Approximate share of team possessions used while on the floor (0–1).
       - name: game_score
         description: Hollinger's Game Score, a single-number summary of a box score.
+
+  - name: team_pace
+    description: >
+      One row per team per game with estimated possessions, pace and
+      offensive/defensive/net rating. season_phase splits the regular season
+      at the All-Star Game, e.g. to compare pace before and after the break.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [game_id, team_id]
+    columns:
+      - name: game_id
+        data_tests: [not_null]
+      - name: team_id
+        data_tests: [not_null]
+      - name: possessions
+        description: Box-score possession estimate, averaged across both teams.
+        data_tests: [not_null]
+      - name: pace
+        description: Possessions per 48 minutes.
+        data_tests: [not_null]
+      - name: season_phase
+        description: pre_all_star, post_all_star or playoffs. Null for a season missing from the all_star_games seed.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [pre_all_star, post_all_star, playoffs]

@@ -13,6 +13,7 @@ from nba_agent.ingest.load import load_frame, write_parquet
     "raw, expected",
     [
         ("FG3_PCT", "fg3_pct"),
+        ("FG3M", "fg3m"),
         ("PLUS_MINUS", "plus_minus"),
         ("gameDateUTC", "game_date_utc"),
         ("homeTeam_teamId", "home_team_team_id"),

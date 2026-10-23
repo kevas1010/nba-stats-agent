@@ -36,7 +36,7 @@ SCHEDULE_COLUMNS = {
 
 def to_snake(name: str) -> str:
     """'FG3_PCT' -> 'fg3_pct', 'gameDateUTC' -> 'game_date_utc'."""
-    name = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    name = re.sub(r"([a-z])([A-Z])", r"\1_\2", name)
     name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
     return name.lower()
 

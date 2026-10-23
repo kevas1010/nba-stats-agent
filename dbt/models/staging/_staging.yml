@@ -1,0 +1,48 @@
+version: 2
+
+models:
+  - name: stg_team_game_logs
+    description: Cleaned team box scores, one row per team per game.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [game_id, team_id]
+    columns:
+      - name: game_id
+        data_tests: [not_null]
+      - name: team_id
+        data_tests: [not_null]
+      - name: season_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Regular Season", "Playoffs"]
+      - name: game_minutes
+        description: Length of the game in minutes (48, plus 5 per overtime).
+        data_tests: [not_null]
+
+  - name: stg_player_game_logs
+    description: Cleaned player box scores, one row per player per game.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [game_id, player_id]
+    columns:
+      - name: game_id
+        data_tests: [not_null]
+      - name: player_id
+        data_tests: [not_null]
+      - name: minutes
+        description: Minutes played, rounded to whole minutes by the API.
+
+  - name: stg_schedule
+    description: Current-season schedule with readable status and nulls for unplayed scores.
+    columns:
+      - name: game_id
+        data_tests: [unique, not_null]
+      - name: status
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [scheduled, live, final]

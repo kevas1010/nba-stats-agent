@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: player_game_stats
+    description: >
+      One row per player per game with box-score stats, shooting efficiency
+      (eFG%, TS%), usage rate and Game Score. Includes players who were
+      active but did not play (played = false).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [game_id, player_id]
+    columns:
+      - name: game_id
+        data_tests: [not_null]
+      - name: player_id
+        data_tests: [not_null]
+      - name: team_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_team_game_logs')
+                field: team_id
+      - name: ts_pct
+        description: True shooting %, pts / (2 * (fga + 0.44 * fta)). Null with no shot attempts.
+      - name: efg_pct
+        description: Effective FG %, counts a made three as 1.5 makes.
+      - name: usage_rate
+        description: Approximate share of team possessions used while on the floor (0–1).
+      - name: game_score
+        description: Hollinger's Game Score, a single-number summary of a box score.

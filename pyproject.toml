@@ -1,0 +1,28 @@
+[project]
+name = "nba-stats-agent"
+version = "0.1.0"
+description = "Chat agent that answers NBA questions from a stats warehouse and the rulebook"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "nba_api>=1.11",
+    "duckdb>=2.0",
+    "pandas>=3.0",
+    "pyarrow>=18",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+nba-ingest = "nba_agent.ingest.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

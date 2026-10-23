@@ -22,8 +22,8 @@ nba_api ──► ingest (Python) ──► Snowflake / DuckDB ──► dbt mod
 
 | Area | What | Status |
 |---|---|---|
-| Data | 2–3 seasons of box scores, play-by-play and schedules from `nba_api` | planned |
-| Warehouse | Snowflake, with a DuckDB fallback for local runs | planned |
+| Data | 3 seasons of team and player box scores (regular season + playoffs) and the current schedule from `nba_api`; play-by-play next | in progress |
+| Warehouse | DuckDB raw layer locally; Snowflake next | in progress |
 | Modeling | dbt Core: staging models, `player_game_stats` and `team_pace` marts, dbt tests | planned |
 | Agent | Python MCP server with `query_stats`, `search_rulebook` (RAG), `get_schedule` | planned |
 | Security | Read-only warehouse role, SQL allowlist blocking DDL/DML, secrets in env vars | planned |
@@ -33,9 +33,25 @@ nba_api ──► ingest (Python) ──► Snowflake / DuckDB ──► dbt mod
 
 ## Setup
 
+Requires Python 3.11 or 3.12.
+
 ```bash
 cp .env.example .env   # fill in your own keys; .env is never committed
 python -m venv .venv
+.venv/Scripts/pip install -e ".[dev]"   # .venv/bin/pip on macOS/Linux
 ```
 
-Further setup steps will be added as each component lands.
+### Ingest data
+
+```bash
+nba-ingest                        # last 3 completed seasons + current season's schedule
+nba-ingest --seasons 2024 2025    # specific seasons (by start year)
+```
+
+This writes Parquet files to `data/raw/` and loads `raw.team_game_logs`, `raw.player_game_logs` and `raw.schedule` into `data/nba.duckdb`. Re-running a season replaces only that season's rows.
+
+### Test
+
+```bash
+pytest
+```

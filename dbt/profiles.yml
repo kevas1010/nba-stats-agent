@@ -1,0 +1,8 @@
+# Credentials come from env vars only; nothing secret lives in this file.
+nba:
+  target: duckdb
+  outputs:
+    duckdb:
+      type: duckdb
+      path: "{{ env_var('DBT_DUCKDB_PATH', '../data/nba.duckdb') }}"
+      threads: 4

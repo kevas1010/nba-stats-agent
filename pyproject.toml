@@ -9,6 +9,7 @@ dependencies = [
     "pandas>=3.0",
     "pyarrow>=18",
     "python-dotenv>=1.0",
+    "dbt-duckdb>=1.11,<2",
 ]
 
 [project.optional-dependencies]

@@ -69,6 +69,12 @@ def _grade_number(expected: Any, text: str, tolerance: float) -> tuple[bool, str
 
 
 def _grade_text(expected: Any, text: str) -> tuple[bool, str]:
+    """Expected may list alternatives separated by '|', e.g. 'ORL|Orlando Magic'."""
+    alternatives = [a for a in str(expected).split("|") if a.strip()]
+    if len(alternatives) > 1:
+        results = [_grade_text(a, text) for a in alternatives]
+        hit = next((r for r in results if r[0]), None)
+        return hit if hit else (False, f"expected one of {alternatives}")
     want = normalize(str(expected))
     got = normalize(text)
     if want and re.search(rf"\b{re.escape(want)}\b", got):
@@ -80,10 +86,15 @@ def _grade_text(expected: Any, text: str) -> tuple[bool, str]:
     return False, f"expected {expected!r}"
 
 
+def _has_phrase(phrase: str, normalized_text: str) -> bool:
+    """Whole-word match, so 'one' doesn't match 'someone' and '1' doesn't match '14'."""
+    return re.search(rf"\b{re.escape(normalize(phrase))}\b", normalized_text) is not None
+
+
 def _grade_rule(q: Question, text: str) -> tuple[bool, str]:
     got = normalize(text)
-    missing = [p for p in q.must_include if normalize(p) not in got]
-    missing += ["one of " + "/".join(g) for g in q.any_of if not any(normalize(p) in got for p in g)]
+    missing = [p for p in q.must_include if not _has_phrase(p, got)]
+    missing += ["one of " + "/".join(g) for g in q.any_of if not any(_has_phrase(p, got) for p in g)]
     if q.cite_rule is not None and not re.search(rf"\brule\s*(no\s*)?{q.cite_rule}\b", got):
         missing.append(f"Rule {q.cite_rule} citation")
     return (not missing), ("all facts present" if not missing else "missing: " + "; ".join(missing))

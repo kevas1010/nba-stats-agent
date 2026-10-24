@@ -52,6 +52,9 @@ def test_missing_answer_line_is_recorded():
         ("Luka Dončić", "ANSWER: Anthony Edwards", False),
         ("NYK", "ANSWER: NYK, by 6 games", True),
         ("BOS", "ANSWER: NYK", False),
+        ("ORL|Orlando Magic", "ANSWER: the Magic", True),
+        ("ORL|Orlando Magic", "ANSWER: ORL", True),
+        ("ORL|Orlando Magic", "ANSWER: Miami Heat", False),
     ],
 )
 def test_text_grading(expected, reply, ok):
@@ -67,6 +70,12 @@ def test_rule_grading_needs_facts_and_citation():
     assert not no_cite.correct and "Rule 7 citation" in no_cite.reason
     assert not grade(rq, None, "Rule 7 says 24 seconds.").correct
     assert not grade(rq, None, "Rule 17: 14 after an offensive rebound.").correct  # Rule 17 isn't Rule 7
+
+
+def test_rule_phrases_match_whole_words():
+    rq = Question(id="r", category="rules", question="?", kind="rule", any_of=(("one", "1"),), cite_rule=14)
+    assert grade(rq, None, "Rule 14: each team gets one Challenge.").correct
+    assert not grade(rq, None, "Rule 14: someone can challenge.").correct  # 'one' inside 'someone'
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,433 @@
+# Golden question set for the NBA Stats Agent.
+#
+# kind: number -> expected value from `sql` (or `value`), matched within `tolerance`
+#       text   -> expected name from `sql`/`value`; "A|B" lists accepted alternatives
+#       rule   -> reply must contain every `must_include` phrase, one phrase from each
+#                 `any_of` group (whole words), and cite `Rule <cite_rule>`
+#
+# Expected SQL runs against the warehouse at eval time, so answers always match
+# the data the agent can see. Rules facts were checked against the 2026-27
+# rulebook text (page numbers in notes). Schedule questions use fixed dates.
+#
+# Team answers accept the code or the full name: the SQL returns "BOS|Boston Celtics".
+
+questions:
+
+  # ---------------------------------------------------------------- stats (26)
+
+  - id: s01
+    category: stats
+    kind: number
+    question: How many regular-season games did the New York Knicks win in 2024-25?
+    sql: |
+      select count(*) from marts.team_pace
+      where team = 'NYK' and season = '2024-25' and season_type = 'Regular Season' and is_win
+
+  - id: s02
+    category: stats
+    kind: text
+    question: Which team had the highest average pace in the 2024-25 regular season?
+    sql: |
+      select t.team || '|' || t.team_name
+      from (select distinct team, team_name from staging.stg_team_game_logs) t
+      where t.team = (select team from marts.team_pace
+                      where season = '2024-25' and season_type = 'Regular Season'
+                      group by team order by avg(pace) desc limit 1)
+
+  - id: s03
+    category: stats
+    kind: number
+    tolerance: 0.1
+    question: What was the Knicks' average pace (possessions per 48 minutes) after the All-Star break in the 2023-24 regular season?
+    sql: |
+      select avg(pace) from marts.team_pace
+      where team = 'NYK' and season = '2023-24' and season_type = 'Regular Season'
+        and season_phase = 'post_all_star'
+
+  - id: s04
+    category: stats
+    kind: number
+    tolerance: 0.15
+    tags: [multi-step]
+    question: Did the Knicks play faster or slower after the All-Star break in the 2023-24 regular season, and by how many possessions per 48 minutes?
+    notes: Expected value is the size of the change; the direction (slower) is in the reason.
+    sql: |
+      select abs(avg(pace) filter (where season_phase = 'post_all_star')
+                 - avg(pace) filter (where season_phase = 'pre_all_star'))
+      from marts.team_pace
+      where team = 'NYK' and season = '2023-24' and season_type = 'Regular Season'
+
+  - id: s05
+    category: stats
+    kind: text
+    question: Who led the NBA in points per game in the 2025-26 regular season among players who played at least 50 games?
+    sql: |
+      select player_name from marts.player_game_stats
+      where season = '2025-26' and season_type = 'Regular Season' and played
+      group by player_name having count(*) >= 50
+      order by avg(pts) desc limit 1
+
+  - id: s06
+    category: stats
+    kind: number
+    tolerance: 0.05
+    question: How many points per game did Luka Dončić average in the 2025-26 regular season (in games he played)?
+    sql: |
+      select avg(pts) from marts.player_game_stats
+      where player_name = 'Luka Dončić' and season = '2025-26' and season_type = 'Regular Season' and played
+
+  - id: s07
+    category: stats
+    kind: text
+    question: Who scored the most points in a single regular-season game in 2025-26?
+    sql: |
+      select player_name from marts.player_game_stats
+      where season = '2025-26' and season_type = 'Regular Season'
+      order by pts desc limit 1
+
+  - id: s08
+    category: stats
+    kind: number
+    question: What was the most points any player scored in a single 2025-26 regular-season game?
+    sql: |
+      select max(pts) from marts.player_game_stats
+      where season = '2025-26' and season_type = 'Regular Season'
+
+  - id: s09
+    category: stats
+    kind: number
+    question: How many three-pointers did the Boston Celtics make in total during the 2024-25 regular season?
+    sql: |
+      select sum(fg3m) from staging.stg_team_game_logs
+      where team = 'BOS' and season = '2024-25' and season_type = 'Regular Season'
+
+  - id: s10
+    category: stats
+    kind: text
+    question: Which team had the best average point differential per game in the 2024-25 regular season?
+    sql: |
+      select team || '|' || team_name from staging.stg_team_game_logs
+      where season = '2024-25' and season_type = 'Regular Season'
+      group by team, team_name order by avg(plus_minus) desc limit 1
+
+  - id: s11
+    category: stats
+    kind: number
+    question: How many triple-doubles did Nikola Jokić record in the 2024-25 regular season? Count games with 10 or more in at least three of points, rebounds, assists, steals and blocks.
+    sql: |
+      select count(*) from marts.player_game_stats
+      where player_name = 'Nikola Jokić' and season = '2024-25' and season_type = 'Regular Season'
+        and ((pts >= 10)::int + (reb >= 10)::int + (ast >= 10)::int + (stl >= 10)::int + (blk >= 10)::int) >= 3
+
+  - id: s12
+    category: stats
+    kind: number
+    tolerance: 0.002
+    question: What was Shai Gilgeous-Alexander's true shooting percentage for the whole 2024-25 regular season, computed from his season totals as points / (2 × (FGA + 0.44 × FTA))?
+    sql: |
+      select sum(pts) / (2 * (sum(fga) + 0.44 * sum(fta))) from marts.player_game_stats
+      where player_name = 'Shai Gilgeous-Alexander' and season = '2024-25' and season_type = 'Regular Season'
+
+  - id: s13
+    category: stats
+    kind: number
+    tolerance: 0.1
+    question: How many points per game did NBA teams average in the 2025-26 regular season?
+    sql: |
+      select avg(pts) from marts.team_pace where season = '2025-26' and season_type = 'Regular Season'
+
+  - id: s14
+    category: stats
+    kind: number
+    tolerance: 0.1
+    question: What was the league-average pace (possessions per 48 minutes) in the 2025-26 regular season?
+    sql: |
+      select avg(pace) from marts.team_pace where season = '2025-26' and season_type = 'Regular Season'
+
+  - id: s15
+    category: stats
+    kind: number
+    question: How many regular-season games went to overtime in 2024-25?
+    sql: |
+      select count(distinct game_id) from marts.team_pace
+      where season = '2024-25' and season_type = 'Regular Season' and game_minutes > 48
+
+  - id: s16
+    category: stats
+    kind: text
+    question: Which player played the most total minutes in the 2024-25 regular season?
+    sql: |
+      select player_name from marts.player_game_stats
+      where season = '2024-25' and season_type = 'Regular Season'
+      group by player_name order by sum(minutes) desc limit 1
+
+  - id: s17
+    category: stats
+    kind: number
+    question: How many home games did the Knicks win in the 2025-26 regular season?
+    sql: |
+      select count(*) from marts.team_pace
+      where team = 'NYK' and season = '2025-26' and season_type = 'Regular Season' and is_home and is_win
+
+  - id: s18
+    category: stats
+    kind: number
+    question: How many total blocks did Victor Wembanyama have in the 2024-25 regular season?
+    sql: |
+      select sum(blk) from marts.player_game_stats
+      where player_name = 'Victor Wembanyama' and season = '2024-25' and season_type = 'Regular Season'
+
+  - id: s19
+    category: stats
+    kind: text
+    question: Which team allowed the fewest points per game in the 2025-26 regular season?
+    sql: |
+      select t.team || '|' || t.team_name
+      from (select distinct team, team_name from staging.stg_team_game_logs) t
+      where t.team = (select team from marts.team_pace
+                      where season = '2025-26' and season_type = 'Regular Season'
+                      group by team order by avg(opp_pts) limit 1)
+
+  - id: s20
+    category: stats
+    kind: text
+    question: Who made the most three-pointers in the 2025-26 regular season?
+    notes: The top two finished one make apart, so this checks the agent ranks totals rather than guessing.
+    sql: |
+      select player_name from marts.player_game_stats
+      where season = '2025-26' and season_type = 'Regular Season'
+      group by player_name order by sum(fg3m) desc limit 1
+
+  - id: s21
+    category: stats
+    kind: number
+    question: How many times did a player score 50 or more points in a 2024-25 regular-season game?
+    sql: |
+      select count(*) from marts.player_game_stats
+      where season = '2024-25' and season_type = 'Regular Season' and pts >= 50
+
+  - id: s22
+    category: stats
+    kind: text
+    tags: [multi-step]
+    question: Which team's average pace increased the most after the All-Star break in the 2025-26 regular season?
+    sql: |
+      select t.team || '|' || t.team_name
+      from (select distinct team, team_name from staging.stg_team_game_logs) t
+      where t.team = (select team from marts.team_pace
+                      where season = '2025-26' and season_type = 'Regular Season'
+                      group by team
+                      order by avg(pace) filter (where season_phase = 'post_all_star')
+                             - avg(pace) filter (where season_phase = 'pre_all_star') desc
+                      limit 1)
+
+  - id: s23
+    category: stats
+    kind: number
+    tolerance: 0.05
+    question: How many rebounds per game did Giannis Antetokounmpo average in the 2023-24 regular season (in games he played)?
+    sql: |
+      select avg(reb) from marts.player_game_stats
+      where player_name = 'Giannis Antetokounmpo' and season = '2023-24' and season_type = 'Regular Season' and played
+
+  - id: s24
+    category: stats
+    kind: number
+    question: In how many 2024-25 regular-season games did Jalen Brunson play?
+    sql: |
+      select count(*) from marts.player_game_stats
+      where player_name = 'Jalen Brunson' and season = '2024-25' and season_type = 'Regular Season' and played
+
+  - id: s25
+    category: stats
+    kind: text
+    question: Which team won the most regular-season games in 2023-24?
+    sql: |
+      select t.team || '|' || t.team_name
+      from (select distinct team, team_name from staging.stg_team_game_logs) t
+      where t.team = (select team from marts.team_pace
+                      where season = '2023-24' and season_type = 'Regular Season'
+                      group by team order by count(*) filter (where is_win) desc limit 1)
+
+  - id: s26
+    category: stats
+    kind: text
+    question: Who had the most assists in a single game during the 2024-25 playoffs?
+    sql: |
+      select player_name from marts.player_game_stats
+      where season = '2024-25' and season_type = 'Playoffs'
+      order by ast desc limit 1
+
+  # ------------------------------------------------------------- schedule (6)
+
+  - id: c01
+    category: schedule
+    kind: text
+    question: Which team do the Knicks play on October 25, 2026?
+    sql: |
+      select t.team || '|' || t.team_name
+      from (select distinct team, team_name from staging.stg_team_game_logs) t
+      where t.team = (select case when home_team = 'NYK' then away_team else home_team end
+                      from staging.stg_schedule
+                      where (home_team = 'NYK' or away_team = 'NYK') and game_date_et = date '2026-10-25')
+
+  - id: c02
+    category: schedule
+    kind: number
+    question: How many NBA games are scheduled on October 23, 2026 (US Eastern dates, excluding preseason)?
+    sql: |
+      select count(*) from staging.stg_schedule
+      where game_date_et = date '2026-10-23' and not is_preseason
+
+  - id: c03
+    category: schedule
+    kind: number
+    question: How many home games do the Los Angeles Lakers play in November 2026?
+    sql: |
+      select count(*) from staging.stg_schedule
+      where home_team = 'LAL' and not is_preseason
+        and game_date_et between date '2026-11-01' and date '2026-11-30'
+
+  - id: c04
+    category: schedule
+    kind: text
+    question: Who did the Golden State Warriors play in their first game of the 2026-27 regular season?
+    sql: |
+      select t.team || '|' || t.team_name
+      from (select distinct team, team_name from staging.stg_team_game_logs) t
+      where t.team = (select case when home_team = 'GSW' then away_team else home_team end
+                      from staging.stg_schedule
+                      where (home_team = 'GSW' or away_team = 'GSW') and not is_preseason
+                      order by game_time_utc limit 1)
+
+  - id: c05
+    category: schedule
+    kind: number
+    question: By how many points did the Philadelphia 76ers beat the Knicks on October 20, 2026?
+    sql: |
+      select away_score - home_score from staging.stg_schedule
+      where away_team = 'PHI' and home_team = 'NYK' and game_date_et = date '2026-10-20'
+
+  - id: c06
+    category: schedule
+    kind: text
+    question: In which city do the Knicks play on October 23, 2026?
+    sql: |
+      select arena_city from staging.stg_schedule
+      where (home_team = 'NYK' or away_team = 'NYK') and game_date_et = date '2026-10-23'
+
+  # ---------------------------------------------------------------- rules (14)
+
+  - id: r01
+    category: rules
+    kind: rule
+    question: How long is the shot clock in the NBA?
+    any_of: [["24"]]
+    cite_rule: 7
+    notes: Rule 7, Section I, p. 28.
+
+  - id: r02
+    category: rules
+    kind: rule
+    question: When does the shot clock reset to 14 seconds instead of 24 after a missed shot?
+    any_of: [["14"], ["rim", "ring"], ["offensive", "offense"]]
+    cite_rule: 7
+    notes: Rule 7, Section IV(d), p. 29 — offense regains possession after a miss that contacts the ring.
+
+  - id: r03
+    category: rules
+    kind: rule
+    question: How many coach's challenges does a team get per game?
+    any_of: [["one", "1", "single"], ["second", "two", "2", "another"]]
+    cite_rule: 14
+    notes: Rule 14, Section I, p. 60 — one, plus a second if the first succeeds.
+
+  - id: r04
+    category: rules
+    kind: rule
+    question: How many personal fouls does it take for a player to be disqualified from a game?
+    any_of: [["six", "6", "sixth", "6th"]]
+    notes: Rule 3, Section I, p. 15. No citation required; Rule 12 is also a reasonable source.
+
+  - id: r05
+    category: rules
+    kind: rule
+    question: How many unsportsmanlike technical fouls lead to a mandatory ejection?
+    any_of: [["two", "2", "second"], ["ejected", "ejection", "eject"]]
+    cite_rule: 12
+    notes: Rule 12A, Section V, p. 41 — must be ejected for two unsportsmanlike acts.
+
+  - id: r06
+    category: rules
+    kind: rule
+    question: What is the defensive three-second rule and what's the penalty for violating it?
+    any_of: [["three", "3"], ["technical"], ["actively guarding", "guarding"]]
+    cite_rule: 10
+    notes: Rule 10, Section VII, p. 36.
+
+  - id: r07
+    category: rules
+    kind: rule
+    question: How long does a team have to advance the ball out of its backcourt?
+    any_of: [["8", "eight"]]
+    cite_rule: 10
+    notes: Rule 10, Section VIII, p. 36.
+
+  - id: r08
+    category: rules
+    kind: rule
+    question: What is the penalty for a transition take foul?
+    must_include: ["free throw"]
+    any_of: [["one", "1", "single"], ["possession", "ball", "sideline"]]
+    cite_rule: 12
+    notes: Rule 12B, Section XI, p. 50 — one free throw, then the offended team keeps the ball.
+
+  - id: r09
+    category: rules
+    kind: rule
+    question: What is the in-game penalty for flopping?
+    must_include: ["technical"]
+    cite_rule: 10
+    notes: Rule 10, Section XVII, p. 38 — technical foul at the next neutral opportunity.
+
+  - id: r10
+    category: rules
+    kind: rule
+    question: How many timeouts does each team get during regulation?
+    any_of: [["seven", "7"]]
+    cite_rule: 5
+    notes: Rule 5, Section VI, p. 22.
+
+  - id: r11
+    category: rules
+    kind: rule
+    question: How long is an overtime period?
+    any_of: [["five", "5"]]
+    cite_rule: 5
+    notes: Rule 5, Section II, p. 21.
+
+  - id: r12
+    category: rules
+    kind: rule
+    question: When is it goaltending to touch a shot?
+    must_include: ["downward"]
+    cite_rule: 11
+    notes: Rule 11, Section I, p. 39 — touching a ball on its downward flight with a chance to score.
+
+  - id: r13
+    category: rules
+    kind: rule
+    question: How long can an offensive player dribble with his back to the basket below the free throw line?
+    any_of: [["five", "5"]]
+    must_include: ["back"]
+    cite_rule: 10
+    notes: Rule 10, Section XVI, p. 38.
+
+  - id: r14
+    category: rules
+    kind: rule
+    question: What is the penalty for a flagrant foul penalty 2?
+    any_of: [["two", "2"], ["ejected", "ejection", "eject"]]
+    must_include: ["free throws"]
+    cite_rule: 12
+    notes: Rule 12B, Section IV(b), p. 46 — two free throws, possession, and the offender is ejected.

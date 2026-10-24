@@ -13,6 +13,7 @@ dependencies = [
     "mcp>=2.3,<3",
     "sqlglot>=30",
     "pypdf>=6",
+    "requests>=2.31",
     "fastembed>=0.9",
 ]
 

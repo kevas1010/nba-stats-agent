@@ -47,6 +47,33 @@ def test_connection_cannot_reenable_external_access(warehouse):
         con.execute("set enable_external_access = true")
 
 
+def test_overlapping_connections_share_the_locked_config(warehouse):
+    # Regression: SET-ing instance-wide options after connecting failed as soon as
+    # a second connection was open while the first held the configuration lock.
+    first, second = connect(warehouse), connect(warehouse)
+    assert run_query(first, "select count(*) from team_pace").rows == [[3]]
+    assert run_query(second, "select count(*) from team_pace").rows == [[3]]
+    with pytest.raises(duckdb.Error):
+        second.execute("set enable_external_access = true")
+
+
+def test_concurrent_queries_from_threads(warehouse):
+    import concurrent.futures
+
+    def count(_):
+        with connect(warehouse) as con:
+            return run_query(con, "select count(*) from player_game_stats").rows[0][0]
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        assert set(pool.map(count, range(40))) == {1000}
+
+
+def test_timestamps_are_reported_in_utc(warehouse):
+    result = run_query(connect(warehouse), "select game_time_utc from staging.stg_schedule where game_id = 's1'",
+                       guarded=False)
+    assert result.rows == [["2026-11-04T23:30:00+00:00"]]
+
+
 def test_slow_query_times_out(warehouse):
     con = connect(warehouse)
     with pytest.raises(TimeoutError):

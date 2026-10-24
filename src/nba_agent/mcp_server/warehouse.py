@@ -12,7 +12,7 @@ import os
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -23,6 +23,7 @@ from nba_agent.mcp_server.sql_guard import check_query
 
 MAX_ROWS = 500
 TIMEOUT_SECONDS = 15.0
+READ_ONLY_CONFIG = {"enable_external_access": False, "lock_configuration": True}
 
 
 def default_db_path() -> Path:
@@ -42,6 +43,9 @@ class QueryResult:
 
 
 def _json_safe(value: Any) -> Any:
+    if isinstance(value, datetime) and value.tzinfo is not None:
+        # DuckDB returns TIMESTAMPTZ in the machine's local zone; report UTC.
+        return value.astimezone(timezone.utc).isoformat()
     if isinstance(value, (date, datetime)):
         return value.isoformat()
     if isinstance(value, Decimal):
@@ -55,10 +59,12 @@ def connect(db_path: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     path = Path(db_path) if db_path else default_db_path()
     if not path.exists():
         raise FileNotFoundError(f"warehouse not found at {path}; run nba-ingest and dbt build first")
-    con = duckdb.connect(str(path), read_only=True, config={"enable_external_access": False})
-    con.execute("SET search_path = 'marts,reference'")
-    con.execute("SET TimeZone = 'UTC'")
-    con.execute("SET lock_configuration = true")
+    # Connections to the same file in one process share a database instance, and
+    # these are instance-wide settings. Passing them at open time (rather than
+    # SET after connecting) gives every connection the same locked config, so
+    # overlapping tool calls don't trip over each other's lock.
+    con = duckdb.connect(str(path), read_only=True, config=dict(READ_ONLY_CONFIG))
+    con.execute("SET search_path = 'marts,reference'")  # per-connection, allowed after the lock
     return con
 
 

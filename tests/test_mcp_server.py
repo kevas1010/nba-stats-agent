@@ -121,6 +121,23 @@ def test_mcp_call_returns_structured_result(warehouse):
     assert result.structured_content["rows"] == [[3]]
 
 
+def test_parallel_tool_calls_all_succeed(warehouse):
+    # Claude often issues several tool calls in one turn; the agent runs them concurrently.
+    async def go():
+        async with Client(create_server(warehouse)) as client:
+            return await asyncio.gather(*(
+                client.call_tool(name, args) for name, args in [
+                    ("query_stats", {"sql": "select count(*) as n from team_pace"}),
+                    ("get_schedule", {"start_date": "2026-11-04", "days": 3}),
+                    ("query_stats", {"sql": "select count(*) as n from player_game_stats"}),
+                    ("get_schedule", {"team": "NYK", "start_date": "2026-11-04", "days": 30}),
+                ] * 3
+            ))
+
+    results = asyncio.run(go())
+    assert not any(r.is_error for r in results), [r.content[0].text for r in results if r.is_error]
+
+
 def test_mcp_call_reports_rejection_as_tool_error(warehouse):
     _, result = _call(create_server(warehouse), "query_stats", {"sql": "select * from raw.secrets"})
     assert result.is_error

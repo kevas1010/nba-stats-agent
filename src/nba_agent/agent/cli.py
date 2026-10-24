@@ -41,7 +41,7 @@ def format_trace(result: AgentResult, record: dict[str, Any], verbose: bool = Fa
     lines = [
         f"-- {record['steps']} steps, {record['tool_calls']} tool calls, "
         f"{record['latency_ms'] / 1000:.1f}s (model {record['model_latency_ms'] / 1000:.1f}s, "
-        f"tools {record['tool_latency_ms'] / 1000:.2f}s)",
+        f"tools {record['tool_latency_ms'] / 1000:.2f}s summed; parallel calls overlap)",
         f"-- {record['input_tokens']:,} in / {record['output_tokens']:,} out tokens "
         f"({record['cache_read_tokens']:,} cache read, {record['cache_write_tokens']:,} cache write), "
         f"{cost}, {result.model} ({result.effort})",

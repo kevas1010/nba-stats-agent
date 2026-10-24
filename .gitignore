@@ -15,6 +15,7 @@ venv/
 data/raw/
 data/processed/
 data/models/
+data/logs/
 *.duckdb
 *.duckdb.wal
 

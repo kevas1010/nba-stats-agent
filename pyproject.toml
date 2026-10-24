@@ -15,6 +15,7 @@ dependencies = [
     "pypdf>=6",
     "requests>=2.31",
     "fastembed>=0.9",
+    "anthropic>=2.3,<3",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +25,7 @@ dev = ["pytest>=8"]
 nba-ingest = "nba_agent.ingest.cli:main"
 nba-mcp = "nba_agent.mcp_server.server:main"
 nba-rulebook = "nba_agent.rulebook.cli:main"
+nba-ask = "nba_agent.agent.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

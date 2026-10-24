@@ -27,6 +27,7 @@ nba-ingest = "nba_agent.ingest.cli:main"
 nba-mcp = "nba_agent.mcp_server.server:main"
 nba-rulebook = "nba_agent.rulebook.cli:main"
 nba-ask = "nba_agent.agent.cli:main"
+nba-eval = "nba_agent.evals.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

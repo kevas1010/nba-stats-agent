@@ -16,6 +16,7 @@ data/raw/
 data/processed/
 data/models/
 data/logs/
+data/evals/
 *.duckdb
 *.duckdb.wal
 

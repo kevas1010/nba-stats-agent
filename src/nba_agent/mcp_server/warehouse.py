@@ -57,6 +57,7 @@ def connect(db_path: Path | str | None = None) -> duckdb.DuckDBPyConnection:
         raise FileNotFoundError(f"warehouse not found at {path}; run nba-ingest and dbt build first")
     con = duckdb.connect(str(path), read_only=True, config={"enable_external_access": False})
     con.execute("SET search_path = 'marts,reference'")
+    con.execute("SET TimeZone = 'UTC'")
     con.execute("SET lock_configuration = true")
     return con
 

@@ -25,7 +25,7 @@ nba_api ──► ingest (Python) ──► Snowflake / DuckDB ──► dbt mod
 | Data | 3 seasons of team and player box scores (regular season + playoffs) and the current schedule from `nba_api`; play-by-play next | in progress |
 | Warehouse | DuckDB raw layer locally; Snowflake next | in progress |
 | Modeling | dbt Core on DuckDB: staging views, `player_game_stats` and `team_pace` marts, 34 data tests | done (DuckDB) |
-| Agent | Python MCP server with `query_stats` and `get_schedule`; `search_rulebook` (RAG) next | in progress |
+| Agent | Python MCP server with `query_stats`, `get_schedule` and `search_rulebook` (hybrid RAG over the 2026-27 rulebook); Claude agent loop next | in progress |
 | Security | SQL allowlist (sqlglot) + read-only, no-file-access DuckDB connection; secrets in env vars; Snowflake role next | in progress |
 | Evals | ~50-question golden set; accuracy, p50/p95 latency, cost per query; RAG vs no-RAG | planned |
 | UI | React/TypeScript chat with charts; Tableau Public dashboard of eval results | planned |
@@ -66,6 +66,18 @@ dbt build --profiles-dir .    # seeds, models and data tests
 
 Data tests cover uniqueness of every grain, accepted values, relationships, team points matching the sum of player points, and pace staying in a plausible range.
 
+### Build the rulebook index
+
+```bash
+nba-rulebook    # downloads the official PDF once, then chunks and embeds it (~10s)
+```
+
+This fetches the [2026-27 Official NBA Playing Rules](https://official.nba.com/rulebook) PDF into `data/raw/rulebook/` (gitignored; the PDF is the NBA's and isn't redistributed here). It then builds `rulebook.chunks` and `rulebook.meta` in `data/nba.duckdb`:
+
+- **Chunking** ([chunk.py](src/nba_agent/rulebook/chunk.py)): text is split along the rulebook's own structure (Rule → Section, Rule 12's Technical/Personal Foul parts, and the Comments on the Rules), packed into chunks of at most 1,200 characters, with breaks between lettered items. That gives 250 chunks across 122 sections, each tagged with its printed page numbers. The table of contents and signal-chart pages are skipped. pypdf splits some kerned words ("PENAL TIES", "T echnical"). They're rejoined only when the joined word appears elsewhere in the rulebook, so real pairs like "a way" or "in to" stay apart.
+- **Embedding** ([embed.py](src/nba_agent/rulebook/embed.py)): `BAAI/bge-small-en-v1.5` via fastembed, running locally on ONNX, so there's no API key and no per-query cost. The model (~65 MB) is cached in `data/models/`.
+- **Search** ([search.py](src/nba_agent/rulebook/search.py)): hybrid retrieval. Cosine similarity over the embeddings catches paraphrases ("take someone down on a fast break" → Transition Take Foul). BM25 catches the rulebook's exact wording ("hang on the rim" → Basket Interference). The two rankings are merged with reciprocal rank fusion. Both run in memory over the 250 chunks, so no database connection is held between searches.
+
 ### Run the MCP server
 
 ```bash
@@ -76,6 +88,7 @@ nba-mcp    # stdio transport
 |---|---|
 | `query_stats(sql)` | Runs one read-only SELECT against `marts.player_game_stats`, `marts.team_pace` and `reference.all_star_games`. The tool description includes every column, so the model can write SQL without a separate schema lookup. Returns columns, rows (max 500), a truncation flag and timing. |
 | `get_schedule(team?, start_date?, days=7)` | Games in a window from the current season's schedule, by US Eastern game date, with scores for finished games. Preseason excluded. |
+| `search_rulebook(query, k=5)` | Top-k rulebook passages for a rules question, each with a citation like `Rule 7 — Shot Clock, Section IV — Resetting Shot Clock, p. 29`. The model loads on the first search, and the index reloads automatically after `nba-rulebook` rebuilds it. |
 
 To use it from Claude Code:
 
@@ -100,4 +113,4 @@ Rejections and SQL errors come back to the model as MCP tool errors with the rea
 pytest
 ```
 
-75 tests cover ingestion helpers, the SQL guard (allowed and rejected queries), the read-only connection, both tools, and real MCP client calls against the server.
+117 tests cover ingestion helpers, the SQL guard (allowed and rejected queries), the read-only connection, rulebook chunking and word repair, the index, hybrid search, all three tools, and real MCP client calls against the server. Rulebook tests use a small deterministic embedder, so they don't need the model download.

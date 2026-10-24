@@ -2,6 +2,7 @@
 
     nba-ingest                       # last 3 completed seasons + current schedule
     nba-ingest --seasons 2024 2025   # season start years
+    nba-ingest --play-by-play        # every event of every logged game (~2 hours, resumable)
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from dotenv import load_dotenv
 
 from nba_agent.ingest.fetch import SEASON_TYPES, fetch_game_logs, fetch_schedule, season_label
 from nba_agent.ingest.load import load_frame, write_parquet
+from nba_agent.ingest.play_by_play import ingest_play_by_play
 
 
 def current_season_start(today: date) -> int:
@@ -33,7 +35,15 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--schedule-season", type=int, default=current, help="season start year for the schedule")
     parser.add_argument("--db", default=os.getenv("DUCKDB_PATH", "data/nba.duckdb"))
     parser.add_argument("--raw-dir", default="data/raw")
+    parser.add_argument("--play-by-play", action="store_true",
+                        help="fetch play-by-play for games already in raw.team_game_logs")
+    parser.add_argument("--limit", type=int, help="with --play-by-play: fetch at most this many games")
     args = parser.parse_args(argv)
+
+    if args.play_by_play:
+        stats = ingest_play_by_play(args.db, [season_label(s) for s in args.seasons], limit=args.limit)
+        print(f"play-by-play done: {stats}")
+        return
 
     raw_dir = Path(args.raw_dir)
     Path(args.db).parent.mkdir(parents=True, exist_ok=True)

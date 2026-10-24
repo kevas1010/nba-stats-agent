@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timezone
 
 import pandas as pd
-from nba_api.stats.endpoints import leaguegamelog, scheduleleaguev2
+from nba_api.stats.endpoints import leaguegamelog, playbyplayv3, scheduleleaguev2
 
 REQUEST_TIMEOUT = 60
 RETRIES = 3
@@ -32,6 +32,14 @@ SCHEDULE_COLUMNS = {
     "awayTeam_teamTricode": "away_team",
     "awayTeam_score": "away_score",
 }
+
+
+PLAY_BY_PLAY_COLUMNS = [
+    "gameId", "actionNumber", "actionId", "clock", "period", "teamId", "teamTricode",
+    "personId", "playerName", "actionType", "subType", "description",
+    "isFieldGoal", "shotResult", "shotValue", "shotDistance", "xLegacy", "yLegacy",
+    "scoreHome", "scoreAway", "pointsTotal", "location",
+]
 
 
 def to_snake(name: str) -> str:
@@ -79,6 +87,14 @@ def fetch_game_logs(season: str, level: str, season_type: str = "Regular Season"
     )[0]
     df = df.drop(columns=["VIDEO_AVAILABLE"], errors="ignore")
     return _stamp(df, season, season_type)
+
+
+def fetch_play_by_play(game_id: str, season: str, season_type: str) -> pd.DataFrame:
+    """Every event in one game (shots, fouls, turnovers, subs...), one row per action."""
+    df = _call(playbyplayv3.PlayByPlayV3, game_id=game_id)[0]
+    if df.empty:
+        return df
+    return _stamp(df[PLAY_BY_PLAY_COLUMNS].copy(), season, season_type)
 
 
 def fetch_schedule(season: str) -> pd.DataFrame:

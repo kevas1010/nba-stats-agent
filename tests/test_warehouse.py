@@ -81,6 +81,22 @@ def test_slow_query_times_out(warehouse):
         run_query(con, "select count(*) from range(100000000000) a", guarded=False, timeout=0.2)
 
 
+def test_connect_waits_out_another_process_writing(warehouse):
+    import subprocess
+    import sys
+
+    # A separate process holds the write lock for ~1.5s, like an ingest batch.
+    writer = subprocess.Popen([sys.executable, "-c",
+                               f"import duckdb, time; c = duckdb.connect(r'{warehouse}'); print('locked', flush=True); time.sleep(1.5)"],
+                              stdout=subprocess.PIPE, text=True)
+    assert writer.stdout.readline().strip() == "locked"
+    try:
+        con = connect(warehouse)  # retries until the writer exits
+        assert run_query(con, "select count(*) from team_pace").rows == [[3]]
+    finally:
+        writer.wait()
+
+
 def test_missing_warehouse_has_helpful_error(tmp_path):
     with pytest.raises(FileNotFoundError, match="dbt build"):
         connect(tmp_path / "nope.duckdb")

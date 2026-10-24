@@ -24,6 +24,7 @@ from nba_agent.mcp_server.sql_guard import check_query
 MAX_ROWS = 500
 TIMEOUT_SECONDS = 15.0
 READ_ONLY_CONFIG = {"enable_external_access": False, "lock_configuration": True}
+CONNECT_RETRIES = 8  # ~10s total backoff
 
 
 def default_db_path() -> Path:
@@ -63,9 +64,27 @@ def connect(db_path: Path | str | None = None) -> duckdb.DuckDBPyConnection:
     # these are instance-wide settings. Passing them at open time (rather than
     # SET after connecting) gives every connection the same locked config, so
     # overlapping tool calls don't trip over each other's lock.
-    con = duckdb.connect(str(path), read_only=True, config=dict(READ_ONLY_CONFIG))
+    con = _open_with_retry(path)
     con.execute("SET search_path = 'marts,reference'")  # per-connection, allowed after the lock
     return con
+
+
+def _open_with_retry(path: Path) -> duckdb.DuckDBPyConnection:
+    """Open read-only, waiting briefly if another process (ingest, dbt) is writing.
+
+    DuckDB lets one process write or many read; a writer's batch usually takes
+    well under a second, so a few short retries ride it out.
+    """
+    delay = 0.1
+    for attempt in range(CONNECT_RETRIES + 1):
+        try:
+            return duckdb.connect(str(path), read_only=True, config=dict(READ_ONLY_CONFIG))
+        except duckdb.IOException:
+            if attempt == CONNECT_RETRIES:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, 2.0)
+    raise AssertionError("unreachable")
 
 
 def run_query(

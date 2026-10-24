@@ -64,6 +64,15 @@ def test_rerun_skips_loaded_games_and_retries_failures(logged_games):
     assert rows(logged_games) == [("g1", 3), ("g2", 3), ("g3", 3)]
 
 
+def test_cools_down_after_a_failure_streak(logged_games):
+    sleeps = []
+    calls = []
+    stats = ingest_play_by_play(logged_games, ["2024-25"], fetch=fake_fetch(calls, fail={"g1", "g2", "g3"}),
+                                log=lambda _: None, sleep=sleeps.append)
+    assert stats["failed"] == 3
+    assert sleeps == [60.0]
+
+
 def test_limit_and_empty_games(logged_games):
     calls = []
     stats = ingest_play_by_play(logged_games, ["2024-25"], limit=2, fetch=fake_fetch(calls, empty={"g1"}),

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import pandas as pd
 from nba_api.stats.endpoints import leaguegamelog, playbyplayv3, scheduleleaguev2
 
-REQUEST_TIMEOUT = 60
+REQUEST_TIMEOUT = 30
 RETRIES = 3
 # stats.nba.com throttles aggressive clients; pause between calls.
 PAUSE_SECONDS = 1.0

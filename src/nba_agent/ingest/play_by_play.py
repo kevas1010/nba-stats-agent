@@ -20,6 +20,10 @@ from nba_agent.ingest.load import RAW_SCHEMA
 
 TABLE = f"{RAW_SCHEMA}.play_by_play"
 BATCH_GAMES = 25
+# stats.nba.com throttles in bursts: requests hang, then recover after a minute or so.
+# After this many failures in a row, pause before trying the next game.
+COOLDOWN_AFTER_FAILURES = 3
+COOLDOWN_SECONDS = 60.0
 
 
 def pending_games(db: Path | str, seasons: list[str]) -> list[tuple[str, str, str]]:
@@ -66,6 +70,7 @@ def ingest_play_by_play(
     limit: int | None = None,
     fetch: Callable[[str, str, str], pd.DataFrame] = fetch_play_by_play,
     log: Callable[[str], None] = print,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, int]:
     games = pending_games(db, seasons)
     if limit is not None:
@@ -75,12 +80,19 @@ def ingest_play_by_play(
     stats = {"games": 0, "rows": 0, "empty": 0, "failed": 0}
     frames: list[pd.DataFrame] = []
     started = time.perf_counter()
+    streak = 0
     for i, (game_id, season, season_type) in enumerate(games, start=1):
         try:
             df = fetch(game_id, season, season_type)
+            streak = 0
         except Exception as exc:  # keep going; the next run retries this game
             stats["failed"] += 1
+            streak += 1
             log(f"  {game_id}: failed ({exc.__class__.__name__}), will retry next run")
+            if streak >= COOLDOWN_AFTER_FAILURES:
+                log(f"  {streak} failures in a row; cooling down {COOLDOWN_SECONDS:.0f}s")
+                sleep(COOLDOWN_SECONDS)
+                streak = 0
             continue
         if df.empty:
             stats["empty"] += 1

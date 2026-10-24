@@ -21,6 +21,7 @@ data/logs/
 
 # dbt
 dbt/target/
+dbt/target-ci/
 dbt/dbt_packages/
 dbt/logs/
 

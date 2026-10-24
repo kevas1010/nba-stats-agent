@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Unit tests
+        run: pytest -q
+
+      # stats.nba.com blocks most cloud IPs, so dbt runs on a synthetic warehouse
+      # whose rows are consistent enough to exercise every data test.
+      - name: dbt build on synthetic data
+        run: |
+          python scripts/make_ci_warehouse.py data/ci.duckdb
+          cd dbt
+          dbt build --profiles-dir . --target-path target-ci
+        env:
+          DBT_DUCKDB_PATH: ../data/ci.duckdb

@@ -149,15 +149,35 @@ def main(argv: list[str] | None = None) -> int:
     question = " ".join(args.question).strip()
     try:
         return asyncio.run(_ask_all([question] if question else None, args))
-    except (anthropic.AuthenticationError, anthropic.CredentialsError):
-        print("No valid Anthropic credentials. Set ANTHROPIC_API_KEY in .env (see .env.example).", file=sys.stderr)
-    except anthropic.RateLimitError:
-        print("Rate limited by the Anthropic API; wait a moment and retry.", file=sys.stderr)
-    except anthropic.APIConnectionError:
-        print("Couldn't reach the Anthropic API; check your connection.", file=sys.stderr)
-    except anthropic.APIStatusError as exc:
-        print(f"Anthropic API error {exc.status_code}: {exc.message}", file=sys.stderr)
-    return 1
+    except Exception as exc:
+        message = friendly_error(exc)
+        if message is None:
+            raise
+        print(message, file=sys.stderr)
+        return 1
+
+
+def _leaf(exc: BaseException) -> BaseException:
+    """The MCP client runs inside an anyio task group, which wraps errors in ExceptionGroups."""
+    while isinstance(exc, BaseExceptionGroup) and len(exc.exceptions) == 1:
+        exc = exc.exceptions[0]
+    return exc
+
+
+def friendly_error(exc: BaseException) -> str | None:
+    err = _leaf(exc)
+    # With no key, token or profile, the SDK raises TypeError when building request headers.
+    if isinstance(err, (anthropic.AuthenticationError, anthropic.CredentialsError)) or (
+        isinstance(err, TypeError) and "authentication method" in str(err)
+    ):
+        return "No valid Anthropic credentials. Set ANTHROPIC_API_KEY in .env (see .env.example)."
+    if isinstance(err, anthropic.RateLimitError):
+        return "Rate limited by the Anthropic API; wait a moment and retry."
+    if isinstance(err, anthropic.APIConnectionError):
+        return "Couldn't reach the Anthropic API; check your connection."
+    if isinstance(err, anthropic.APIStatusError):
+        return f"Anthropic API error {err.status_code}: {err.message}"
+    return None
 
 
 if __name__ == "__main__":

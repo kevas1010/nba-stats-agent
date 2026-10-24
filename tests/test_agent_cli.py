@@ -55,9 +55,21 @@ def test_report_flag_does_not_call_the_api(tmp_path, capsys, monkeypatch):
 
 
 def test_missing_credentials_message(monkeypatch, capsys):
+    # What SDK 2.x actually raises with no key, wrapped by the MCP client's task group.
     async def boom(*_args, **_kwargs):
-        raise cli.anthropic.CredentialsError("no credentials")
+        raise ExceptionGroup("unhandled errors in a TaskGroup", [TypeError(
+            '"Could not resolve authentication method. Expected one of api_key, auth_token, or credentials to be set."'
+        )])
 
     monkeypatch.setattr(cli, "_ask_all", boom)
     assert cli.main(["who leads the league in pace?"]) == 1
     assert "ANTHROPIC_API_KEY" in capsys.readouterr().err
+
+
+def test_unexpected_errors_still_raise(monkeypatch):
+    async def boom(*_args, **_kwargs):
+        raise ExceptionGroup("tg", [ValueError("a real bug")])
+
+    monkeypatch.setattr(cli, "_ask_all", boom)
+    with pytest.raises(ExceptionGroup):
+        cli.main(["q"])

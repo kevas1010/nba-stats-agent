@@ -12,6 +12,8 @@ dependencies = [
     "dbt-duckdb>=1.11,<2",
     "mcp>=2.3,<3",
     "sqlglot>=30",
+    "pypdf>=6",
+    "fastembed>=0.9",
 ]
 
 [project.optional-dependencies]
@@ -20,6 +22,7 @@ dev = ["pytest>=8"]
 [project.scripts]
 nba-ingest = "nba_agent.ingest.cli:main"
 nba-mcp = "nba_agent.mcp_server.server:main"
+nba-rulebook = "nba_agent.rulebook.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

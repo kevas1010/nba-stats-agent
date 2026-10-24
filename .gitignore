@@ -14,6 +14,7 @@ venv/
 # Data and local warehouse files
 data/raw/
 data/processed/
+data/models/
 *.duckdb
 *.duckdb.wal
 

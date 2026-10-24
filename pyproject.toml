@@ -10,6 +10,8 @@ dependencies = [
     "pyarrow>=18",
     "python-dotenv>=1.0",
     "dbt-duckdb>=1.11,<2",
+    "mcp>=2.3,<3",
+    "sqlglot>=30",
 ]
 
 [project.optional-dependencies]
@@ -17,6 +19,7 @@ dev = ["pytest>=8"]
 
 [project.scripts]
 nba-ingest = "nba_agent.ingest.cli:main"
+nba-mcp = "nba_agent.mcp_server.server:main"
 
 [build-system]
 requires = ["setuptools>=68"]

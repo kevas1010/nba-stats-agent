@@ -1,7 +1,43 @@
+import hashlib
+import re
 from datetime import datetime, timezone
 
 import duckdb
 import pytest
+
+from nba_agent.rulebook.chunk import Chunk
+from nba_agent.rulebook.index import build_index
+
+
+class HashEmbedder:
+    """Deterministic bag-of-words embedder so tests don't need the real model."""
+
+    name = "test-hash"
+    dim = 64
+
+    def _vector(self, text):
+        vec = [0.0] * self.dim
+        for word in re.findall(r"[a-z]+", text.lower()):
+            vec[int(hashlib.md5(word.encode()).hexdigest(), 16) % self.dim] += 1.0
+        return vec
+
+    def embed_documents(self, texts):
+        return [self._vector(t) for t in texts]
+
+    def embed_query(self, text):
+        return self._vector(text)
+
+
+RULE_CHUNKS = [
+    Chunk("c0000", "Rule 7 — Shot Clock", "Section I — Definition", 28, 28,
+          "a. The shot clock is 24 seconds. The offensive team must attempt a field goal within 24 seconds."),
+    Chunk("c0001", "Rule 3 — Players, Substitutes, and Coaches", "Section I — Team", 15, 15,
+          "a. Each team shall consist of five players. A player is disqualified when he receives his sixth personal foul."),
+    Chunk("c0002", "Rule 11 — Basket Interference—Goaltending", "Section I — A Player Shall Not:", 39, 39,
+          "a. Touch the ball or the basket ring when the ball is on the ring, or hang on the rim."),
+    Chunk("c0003", "Rule 14 — Coach’s Challenge", "Section I — Overview", 60, 61,
+          "Each team is entitled to one challenge per game, regardless of whether the challenge is successful."),
+]
 
 
 @pytest.fixture
@@ -41,3 +77,11 @@ def warehouse(tmp_path):
     )
     con.close()
     return path
+
+
+@pytest.fixture
+def rulebook_warehouse(warehouse):
+    """The warehouse fixture plus a rulebook index built with HashEmbedder."""
+    with duckdb.connect(str(warehouse)) as con:
+        build_index(con, RULE_CHUNKS, HashEmbedder(), season="2026-27", source_url="https://example.test/rules.pdf")
+    return warehouse

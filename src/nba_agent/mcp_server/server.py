@@ -1,4 +1,4 @@
-"""MCP server: query_stats and get_schedule over the DuckDB warehouse.
+"""MCP server: query_stats, get_schedule and search_rulebook over the DuckDB warehouse.
 
     nba-mcp            # stdio transport, for Claude Desktop / Claude Code / the agent
 """
@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -17,8 +18,13 @@ from mcp.types import ToolAnnotations
 
 from nba_agent.mcp_server.sql_guard import ALLOWED_TABLES, UnsafeQueryError
 from nba_agent.mcp_server.warehouse import MAX_ROWS, connect, default_db_path, run_query
+from nba_agent.rulebook.embed import Embedder, FastEmbedder
+from nba_agent.rulebook.search import RulebookSearcher, index_version
+from nba_agent.rulebook.source import RULEBOOK_SEASON
 
 MAX_SCHEDULE_DAYS = 60
+MAX_RULEBOOK_RESULTS = 10
+MAX_QUERY_CHARS = 500
 _TEAM = re.compile(r"^[A-Za-z]{3}$")
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
@@ -129,15 +135,77 @@ def get_schedule(
     }
 
 
-def create_server(db_path: Path | None = None) -> MCPServer:
+class RulebookTool:
+    """search_rulebook with a lazily loaded model and index.
+
+    The embedding model takes a few seconds to load, so it's created on the
+    first search, not at server start. The index is reloaded whenever
+    nba-rulebook rebuilds it, without restarting the server.
+    """
+
+    def __init__(self, db_path: Path | None = None, embedder_factory: Callable[[], Embedder] = FastEmbedder) -> None:
+        self.db_path = db_path
+        self.embedder_factory = embedder_factory
+        self._embedder: Embedder | None = None
+        self._searcher: RulebookSearcher | None = None
+
+    def _current_searcher(self) -> RulebookSearcher:
+        try:
+            with connect(self.db_path) as con:
+                version = index_version(con)
+                if version is None:
+                    raise ToolError("rulebook index not built yet; run nba-rulebook")
+                if self._searcher is None or self._searcher.version != version:
+                    if self._embedder is None:
+                        self._embedder = self.embedder_factory()
+                    self._searcher = RulebookSearcher.load(con, self._embedder)
+        except FileNotFoundError as exc:
+            raise ToolError(str(exc)) from exc
+        except RuntimeError as exc:
+            raise ToolError(str(exc)) from exc
+        return self._searcher
+
+    def __call__(self, query: str, k: int = 5) -> dict[str, Any]:
+        query = query.strip()
+        if not query:
+            raise ToolError("query must not be empty")
+        if len(query) > MAX_QUERY_CHARS:
+            raise ToolError(f"query must be at most {MAX_QUERY_CHARS} characters")
+        if not 1 <= k <= MAX_RULEBOOK_RESULTS:
+            raise ToolError(f"k must be between 1 and {MAX_RULEBOOK_RESULTS}")
+
+        hits = self._current_searcher().search(query, k)
+        return {
+            "rulebook": f"{RULEBOOK_SEASON} Official NBA Playing Rules",
+            "results": [
+                {
+                    "citation": hit.citation,
+                    "rule": hit.rule,
+                    "section": hit.section,
+                    "page_start": hit.page_start,
+                    "page_end": hit.page_end,
+                    "text": hit.text,
+                    "score": hit.score,
+                }
+                for hit in hits
+            ],
+        }
+
+
+def create_server(
+    db_path: Path | None = None,
+    embedder_factory: Callable[[], Embedder] = FastEmbedder,
+) -> MCPServer:
     server = MCPServer(
         name="nba-stats",
         instructions=(
             "Answer NBA questions from a stats warehouse covering recent seasons. "
-            "Use query_stats for historical box scores, pace and ratings, and "
-            "get_schedule for upcoming or recent games."
+            "Use query_stats for historical box scores, pace and ratings, "
+            "get_schedule for upcoming or recent games, and search_rulebook for "
+            "rules questions. Cite the rule, section and page for rules answers."
         ),
     )
+    search_rulebook = RulebookTool(db_path, embedder_factory)
 
     @server.tool(
         name="query_stats",
@@ -159,6 +227,21 @@ def create_server(db_path: Path | None = None) -> MCPServer:
     )
     def _get_schedule(team: str | None = None, start_date: str | None = None, days: int = 7) -> dict[str, Any]:
         return get_schedule(team, start_date, days, db_path)
+
+    @server.tool(
+        name="search_rulebook",
+        description=(
+            f"Search the {RULEBOOK_SEASON} Official NBA Playing Rules for passages relevant to a "
+            "rules question (fouls, violations, shot clock, timeouts, replay, coach's challenge...). "
+            "Plain-language questions work; hybrid semantic + keyword search. Returns the top k "
+            f"passages (default 5, max {MAX_RULEBOOK_RESULTS}) with rule, section and page numbers. "
+            "Answer only from the returned text and cite the citation field; if no passage covers "
+            "the question, say the rulebook excerpt doesn't address it."
+        ),
+        annotations=READ_ONLY,
+    )
+    def _search_rulebook(query: str, k: int = 5) -> dict[str, Any]:
+        return search_rulebook(query, k)
 
     return server
 

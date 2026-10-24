@@ -107,10 +107,10 @@ def _call(server, name, args):
     return asyncio.run(go())
 
 
-def test_mcp_client_sees_both_tools_as_read_only(warehouse):
+def test_mcp_client_sees_all_tools_as_read_only(warehouse):
     tools, _ = _call(create_server(warehouse), "get_schedule", {"days": 1})
     by_name = {t.name: t for t in tools.tools}
-    assert set(by_name) == {"query_stats", "get_schedule"}
+    assert set(by_name) == {"query_stats", "get_schedule", "search_rulebook"}
     assert all(t.annotations.read_only_hint for t in by_name.values())
     assert "marts.player_game_stats" in by_name["query_stats"].description
 

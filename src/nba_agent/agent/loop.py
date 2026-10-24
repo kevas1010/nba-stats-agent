@@ -22,26 +22,38 @@ MAX_TOKENS = 16000
 # the request on a fallback model it picks by refusal category.
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
-# Kept free of anything that changes per request (dates, IDs) so tools + system
-# form a stable, cacheable prefix. Today's date goes in the user message.
-SYSTEM_PROMPT = """\
-You answer questions about the NBA using three tools:
+def build_system_prompt(rulebook: bool = True) -> str:
+    """The agent's instructions; rulebook=False is the no-RAG eval baseline.
 
-- query_stats: read-only SQL over player and team box scores for the last three \
-completed seasons (regular season and playoffs), including pace, ratings and \
-pre/post All-Star splits.
-- get_schedule: the current season's schedule and final scores.
-- search_rulebook: passages from the current Official NBA Playing Rules.
+    Kept free of anything that changes per request (dates, IDs) so tools +
+    system form a stable, cacheable prefix. Today's date goes in the user message.
+    """
+    tools = [
+        "- query_stats: read-only SQL over player and team box scores for the last three "
+        "completed seasons (regular season and playoffs), including pace, ratings and "
+        "pre/post All-Star splits.",
+        "- get_schedule: the current season's schedule and final scores.",
+    ]
+    if rulebook:
+        tools.append("- search_rulebook: passages from the current Official NBA Playing Rules.")
+    rules_line = (
+        "For rules answers, cite the rule, section and page from search_rulebook. "
+        if rulebook else "For rules questions, answer from your own knowledge of the NBA rules. "
+    )
+    return (
+        f"You answer questions about the NBA using {'three' if rulebook else 'two'} tools:\n\n"
+        + "\n".join(tools)
+        + "\n\nGround every number in tool results; don't answer stats from memory. Break "
+        "comparative questions into the queries they need, and check that a result "
+        "actually covers the question (right team, season, season type) before relying "
+        "on it. If a query fails, read the error, fix the SQL and try again.\n\n"
+        "Answer in a few sentences. State the key numbers with their units and the "
+        f"seasons they cover. {rules_line}If the data can't answer the question, say "
+        "what's missing instead of guessing."
+    )
 
-Ground every number and rule in tool results; don't answer from memory. Break \
-comparative questions into the queries they need, and check that a result \
-actually covers the question (right team, season, season type) before relying \
-on it. If a query fails, read the error, fix the SQL and try again.
 
-Answer in a few sentences. State the key numbers with their units and the \
-seasons they cover. For rules answers, cite the rule, section and page from \
-search_rulebook. If the data can't answer the question, say what's missing \
-instead of guessing."""
+SYSTEM_PROMPT = build_system_prompt()
 
 
 @dataclass

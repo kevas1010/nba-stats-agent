@@ -16,6 +16,7 @@ dependencies = [
     "requests>=2.31",
     "fastembed>=0.9",
     "anthropic>=2.3,<3",
+    "pyyaml>=6",
 ]
 
 [project.optional-dependencies]

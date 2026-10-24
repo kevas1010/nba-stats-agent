@@ -13,7 +13,7 @@ from sqlglot.errors import ParseError
 
 # schema -> tables the agent may read.
 ALLOWED_TABLES: dict[str, frozenset[str]] = {
-    "marts": frozenset({"player_game_stats", "team_pace"}),
+    "marts": frozenset({"player_game_stats", "shot_events", "team_pace"}),
     "reference": frozenset({"all_star_games"}),
 }
 

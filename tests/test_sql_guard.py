@@ -21,6 +21,7 @@ from nba_agent.mcp_server.sql_guard import UnsafeQueryError, check_query
         "select p.player_name, a.all_star_date from player_game_stats p "
         "join reference.all_star_games a using (season)",
         "select team from marts.team_pace union all select team from marts.player_game_stats",
+        "select player_name, count(*) filter (where shot_made) from marts.shot_events where is_clutch group by 1",
         "select * from marts.team_pace where game_id in (select game_id from marts.player_game_stats)",
     ],
 )
@@ -46,6 +47,8 @@ def test_allows_read_only_queries_on_marts(sql):
         ("install httpfs", "only SELECT"),
         ("select * from raw.team_game_logs", "table not allowed"),
         ("select * from staging.stg_schedule", "table not allowed"),
+        ("select * from staging.stg_play_by_play", "table not allowed"),
+        ("select * from raw.play_by_play", "table not allowed"),
         ("select * from information_schema.tables", "table not allowed"),
         ("select * from some_other_table", "table not allowed"),
         ("select * from nba.marts.team_pace", "catalog-qualified"),

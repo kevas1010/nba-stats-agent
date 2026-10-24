@@ -47,6 +47,49 @@ def _split(total: int, parts: int) -> list[int]:
     return base
 
 
+def _play_by_play(team_rows: list[dict], player_rows: list[dict], now: datetime) -> list[dict]:
+    """Shot events whose counts match each team's box score (fga, fgm, fg3m), plus a steal
+    that shares its action_number with a turnover, as the real feed does."""
+    events = []
+    for game_id in dict.fromkeys(r["game_id"] for r in team_rows):
+        lines = [r for r in team_rows if r["game_id"] == game_id]
+        home = next(r for r in lines if "vs." in r["matchup"])
+        score = {r["team_id"]: 0 for r in lines}
+        action_id = 0
+        for line in lines:
+            shooters = [p for p in player_rows if p["game_id"] == game_id and p["team_id"] == line["team_id"]]
+            # Made threes, missed threes, made twos, missed twos, in that order.
+            shots = ([(3, True)] * line["fg3m"] + [(3, False)] * (line["fg3a"] - line["fg3m"])
+                     + [(2, True)] * (line["fgm"] - line["fg3m"])
+                     + [(2, False)] * (line["fga"] - line["fgm"] - (line["fg3a"] - line["fg3m"])))
+            for i, (value, made) in enumerate(shots):
+                action_id += 1
+                shooter = shooters[i % len(shooters)]
+                period = 1 + (i * 4) // len(shots)
+                if made:
+                    score[line["team_id"]] += value
+                home_score = score[home["team_id"]]
+                away_score = next(v for k, v in score.items() if k != home["team_id"])
+                events.append(dict(
+                    game_id=game_id, action_number=action_id, action_id=action_id,
+                    clock=f"PT{11 - i % 12:02d}M{(i * 7) % 60:02d}.00S", period=period,
+                    team_id=line["team_id"], team_tricode=line["team_abbreviation"],
+                    person_id=shooter["player_id"], player_name=shooter["player_name"].split()[-1],
+                    action_type="Made Shot" if made else "Missed Shot", sub_type="Jump Shot",
+                    description="", is_field_goal=1, shot_result="Made" if made else "Missed",
+                    shot_value=value, shot_distance=25 if value == 3 else 8, x_legacy=0, y_legacy=0,
+                    score_home=str(home_score) if made else "", score_away=str(away_score) if made else "",
+                    points_total=home_score + away_score, location="h" if line is home else "v",
+                    season=line["season"], season_type=line["season_type"], ingested_at=now,
+                ))
+        # A turnover and the steal it caused share an action_number.
+        for linked_id, action_type in ((action_id + 1, "Turnover"), (action_id + 2, "")):
+            events.append(dict(events[-1], action_id=linked_id, action_number=action_id + 1,
+                               action_type=action_type, is_field_goal=0, shot_result="", shot_value=0,
+                               shot_distance=0, score_home="", score_away=""))
+    return events
+
+
 def build(path: Path) -> None:
     now = datetime.now(timezone.utc)
     team_rows, player_rows = [], []
@@ -88,12 +131,15 @@ def build(path: Path) -> None:
              away_team_id=TEAMS["NYK"][0], away_team="NYK", away_score=0, season="2026-27", ingested_at=now),
     ])
 
+    pbp = pd.DataFrame(_play_by_play(team_rows, player_rows, now))
+
     path.parent.mkdir(parents=True, exist_ok=True)
     path.unlink(missing_ok=True)
     with duckdb.connect(str(path)) as con:
         con.execute("CREATE SCHEMA raw")
         for name, frame in (("team_game_logs", pd.DataFrame(team_rows)),
-                            ("player_game_logs", pd.DataFrame(player_rows)), ("schedule", schedule)):
+                            ("player_game_logs", pd.DataFrame(player_rows)), ("schedule", schedule),
+                            ("play_by_play", pbp)):
             con.register("frame", frame)
             con.execute(f"CREATE TABLE raw.{name} AS SELECT * FROM frame")
             con.unregister("frame")

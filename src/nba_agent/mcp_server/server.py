@@ -36,8 +36,10 @@ Only these tables can be queried (schema-qualified or bare names both work):
 
 Seasons are labelled like '2024-25'; season_type is 'Regular Season' or 'Playoffs'.
 Team columns use three-letter codes ('NYK', 'BOS'). Percentages and rates are
-0-1 fractions. Results are capped at {max_rows} rows; aggregate in SQL rather
-than pulling raw rows. DDL, DML, file access and other schemas are rejected.
+0-1 fractions. shot_events has one row per field goal attempt from play-by-play
+(period 5+ is overtime; is_clutch = last 5:00 of the 4th/OT within 5 points).
+Results are capped at {max_rows} rows; aggregate in SQL rather than pulling raw
+rows. DDL, DML, file access and other schemas are rejected.
 """
 
 

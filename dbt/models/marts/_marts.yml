@@ -30,6 +30,34 @@ models:
       - name: game_score
         description: Hollinger's Game Score, a single-number summary of a box score.
 
+  - name: shot_events
+    description: >
+      One row per field goal attempt from play-by-play: shooter, shot type,
+      distance, court location, make/miss, points, the score margin before
+      the shot, and whether it was a clutch shot.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [game_id, action_id]
+    columns:
+      - name: game_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_team_game_logs')
+                field: game_id
+      - name: shot_made
+        data_tests: [not_null]
+      - name: shot_distance
+        description: Distance from the basket in feet.
+      - name: x_legacy
+        description: Court x position in tenths of a foot from the basket (legacy NBA shot-chart units).
+      - name: margin_before
+        description: Shooting team's lead (negative when trailing) just before the shot.
+      - name: is_clutch
+        description: Last 5:00 of the 4th quarter or overtime with the score within 5 points (NBA definition).
+
   - name: team_pace
     description: >
       One row per team per game with estimated possessions, pace and

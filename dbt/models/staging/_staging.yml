@@ -35,6 +35,26 @@ models:
       - name: minutes
         description: Minutes played, rounded to whole minutes by the API.
 
+  - name: stg_play_by_play
+    description: Play-by-play events with the clock in seconds and the running score on every row.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [game_id, action_id]
+    columns:
+      - name: game_id
+        data_tests: [not_null]
+      - name: seconds_left_in_period
+        description: Seconds left in the period when the event happened (720 at the start of a quarter, 300 in overtime).
+      - name: shot_value
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [2, 3]
+      - name: score_home
+        description: Home score after this event, carried forward from the last scoring play.
+        data_tests: [not_null]
+
   - name: stg_schedule
     description: Current-season schedule with readable status and nulls for unplayed scores.
     columns:

@@ -11,3 +11,5 @@ sources:
         description: One row per player per game (LeagueGameLog, player level).
       - name: schedule
         description: League schedule for the current season, including unplayed games.
+      - name: play_by_play
+        description: Every event of every logged game (PlayByPlayV3), one row per action.

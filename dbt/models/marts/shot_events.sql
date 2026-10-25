@@ -10,6 +10,19 @@ teams as (
     from {{ ref('stg_team_game_logs') }}
 ),
 
+-- Which score column belongs to each team. The box score's "vs." marks the home
+-- team, but at neutral sites both teams are listed as away; the feed's own
+-- h/v marker (majority per team, ignoring a few blank events) always picks a side.
+sides as (
+    select
+        game_id,
+        team_id,
+        mode(location) filter (where location in ('h', 'v')) = 'h' as scored_as_home
+    from {{ ref('stg_play_by_play') }}
+    where team_id is not null
+    group by game_id, team_id
+),
+
 -- Play-by-play only has last names ("Mobley"); box scores have full names.
 players as (
     select game_id, player_id, player_name
@@ -25,12 +38,15 @@ located as (
         t.is_home,
         case when s.shot_made then s.shot_value else 0 end as points,
         -- Score after the shot, from the shooting team's side.
-        case when t.is_home then s.score_home else s.score_away end as team_score_after,
-        case when t.is_home then s.score_away else s.score_home end as opp_score_after
+        case when sd.scored_as_home then s.score_home else s.score_away end as team_score_after,
+        case when sd.scored_as_home then s.score_away else s.score_home end as opp_score_after
     from shots s
     join teams t
         on t.game_id = s.game_id
        and t.team_id = s.team_id
+    join sides sd
+        on sd.game_id = s.game_id
+       and sd.team_id = s.team_id
     left join players p
         on p.game_id = s.game_id
        and p.player_id = s.player_id

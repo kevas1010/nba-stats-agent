@@ -82,6 +82,19 @@ def _play_by_play(team_rows: list[dict], player_rows: list[dict], now: datetime)
                     points_total=home_score + away_score, location="h" if line is home else "v",
                     season=line["season"], season_type=line["season_type"], ingested_at=now,
                 ))
+            # Made free throws, so the final play-by-play score equals the box score.
+            for i in range(line["ftm"]):
+                action_id += 1
+                score[line["team_id"]] += 1
+                home_score = score[home["team_id"]]
+                away_score = next(v for k, v in score.items() if k != home["team_id"])
+                events.append(dict(
+                    events[-1], action_number=action_id, action_id=action_id, period=4,
+                    person_id=shooters[i % len(shooters)]["player_id"], action_type="Free Throw",
+                    sub_type="Free Throw 1 of 2", is_field_goal=0, shot_result="Made", shot_value=0,
+                    shot_distance=0, score_home=str(home_score), score_away=str(away_score),
+                    points_total=home_score + away_score,
+                ))
         # A turnover and the steal it caused share an action_number.
         for linked_id, action_type in ((action_id + 1, "Turnover"), (action_id + 2, "")):
             events.append(dict(events[-1], action_id=linked_id, action_number=action_id + 1,

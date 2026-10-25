@@ -33,6 +33,9 @@ parsed as (
         case when is_field_goal = 1 then shot_distance end             as shot_distance,
         x_legacy,
         y_legacy,
+        -- 'h' / 'v': the side the feed scores this team on. Unlike the box score's
+        -- matchup, this still names a home side at neutral sites (Mexico City, NBA Cup in Las Vegas).
+        nullif(location, '')                                           as location,
         try_cast(nullif(score_home, '') as integer)                    as reported_score_home,
         try_cast(nullif(score_away, '') as integer)                    as reported_score_away
     from source

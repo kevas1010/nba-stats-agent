@@ -53,6 +53,8 @@ models:
         description: Distance from the basket in feet.
       - name: x_legacy
         description: Court x position in tenths of a foot from the basket (legacy NBA shot-chart units).
+      - name: is_home
+        description: True for the home team per the box score; false for both teams at neutral-site games.
       - name: margin_before
         description: Shooting team's lead (negative when trailing) just before the shot.
       - name: is_clutch

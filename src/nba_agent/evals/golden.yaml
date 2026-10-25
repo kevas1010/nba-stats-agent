@@ -258,6 +258,44 @@ questions:
       where season = '2024-25' and season_type = 'Playoffs'
       order by ast desc limit 1
 
+  # --------------------------------------------------------- play-by-play (4)
+
+  - id: p01
+    category: play_by_play
+    kind: text
+    question: Which player made the most field goals in fourth quarters during the 2024-25 regular season?
+    sql: |
+      select player_name from marts.shot_events
+      where season = '2024-25' and season_type = 'Regular Season' and period = 4 and shot_made
+      group by player_name order by count(*) desc limit 1
+
+  - id: p02
+    category: play_by_play
+    kind: number
+    tolerance: 0.002
+    question: What share of all field goal attempts in the 2024-25 regular season were three-pointers?
+    sql: |
+      select avg(is_three::int) from marts.shot_events
+      where season = '2024-25' and season_type = 'Regular Season'
+
+  - id: p03
+    category: play_by_play
+    kind: text
+    tags: [multi-step]
+    question: Who scored the most clutch field-goal points in the 2024-25 regular season? Clutch means the last five minutes of the fourth quarter or overtime with the score within five points; count points from made field goals only.
+    sql: |
+      select player_name from marts.shot_events
+      where season = '2024-25' and season_type = 'Regular Season' and is_clutch
+      group by player_name order by sum(points) desc limit 1
+
+  - id: p04
+    category: play_by_play
+    kind: number
+    question: How many field goals from 40 feet or farther were made in the 2024-25 regular season?
+    sql: |
+      select count(*) from marts.shot_events
+      where season = '2024-25' and season_type = 'Regular Season' and shot_distance >= 40 and shot_made
+
   # ------------------------------------------------------------- schedule (6)
 
   - id: c01

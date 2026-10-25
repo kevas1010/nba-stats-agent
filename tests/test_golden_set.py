@@ -8,8 +8,8 @@ from nba_agent.evals.golden import load_golden
 def test_golden_set_loads_and_is_balanced():
     questions = load_golden()
     counts = Counter(q.category for q in questions)
-    assert len(questions) >= 46
-    assert counts["stats"] >= 20 and counts["rules"] >= 12 and counts["schedule"] >= 5
+    assert len(questions) == 50
+    assert counts == {"stats": 26, "play_by_play": 4, "schedule": 6, "rules": 14}
     assert len({q.question for q in questions}) == len(questions), "duplicate question text"
 
 

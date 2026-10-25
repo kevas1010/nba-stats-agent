@@ -1,5 +1,7 @@
 # NBA Stats Agent
 
+[![CI](https://github.com/kevas1010/nba-stats-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/kevas1010/nba-stats-agent/actions/workflows/ci.yml)
+
 A chat assistant that answers basketball questions by querying a stats warehouse and searching the official NBA rulebook, with measured accuracy, latency and cost.
 
 > Example: *"Did the Knicks play faster after the All-Star break?"* → the agent queries team pace, compares the two periods, and explains the result.
@@ -22,14 +24,14 @@ nba_api ──► ingest (Python) ──► Snowflake / DuckDB ──► dbt mod
 
 | Area | What | Status |
 |---|---|---|
-| Data | 3 seasons of team and player box scores (regular season + playoffs) and the current schedule from `nba_api`; play-by-play next | in progress |
+| Data | 3 seasons of team and player box scores and play-by-play (regular season + playoffs, ~3,900 games) and the current schedule from `nba_api` | done |
 | Warehouse | DuckDB raw layer locally; Snowflake next | in progress |
-| Modeling | dbt Core on DuckDB: staging views, `player_game_stats` and `team_pace` marts, 34 data tests | done (DuckDB) |
+| Modeling | dbt Core on DuckDB: staging views, `player_game_stats`, `team_pace` and `shot_events` marts, 46 data tests | done (DuckDB) |
 | Agent | Python MCP server with `query_stats`, `get_schedule` and `search_rulebook` (hybrid RAG over the 2026-27 rulebook); multi-step Claude agent (`nba-ask`) with per-step token, cost and latency logging | done |
 | Security | SQL allowlist (sqlglot) + read-only, no-file-access DuckDB connection; secrets in env vars; Snowflake role next | in progress |
-| Evals | ~50-question golden set; accuracy, p50/p95 latency, cost per query; RAG vs no-RAG | planned |
+| Evals | 50-question golden set, deterministic grading, accuracy / p50-p95 latency / cost per query, RAG vs no-RAG; runs through Claude Code headless | built, first run pending |
 | UI | React/TypeScript chat with charts; Tableau Public dashboard of eval results | planned |
-| Process | pytest, GitHub Actions CI | planned |
+| Process | pytest, GitHub Actions CI (pytest + `dbt build` on a synthetic warehouse) | done |
 
 ## Setup
 
@@ -50,6 +52,12 @@ nba-ingest --seasons 2024 2025    # specific seasons (by start year)
 
 This writes Parquet files to `data/raw/` and loads `raw.team_game_logs`, `raw.player_game_logs` and `raw.schedule` into `data/nba.duckdb`. Re-running a season replaces only that season's rows.
 
+```bash
+nba-ingest --play-by-play         # every event of every logged game: ~3,900 API calls, ~2 hours
+```
+
+Play-by-play is resumable. Games already in `raw.play_by_play` are skipped, failures are retried on the next run, and the ingest cools down for a minute after a streak of failures, because stats.nba.com throttles in bursts. Rows are written in batches of 25 games through short-lived connections, so the database stays usable while it runs.
+
 ### Build the models
 
 ```bash
@@ -62,9 +70,17 @@ dbt build --profiles-dir .    # seeds, models and data tests
 | `staging` | `stg_team_game_logs`, `stg_player_game_logs`, `stg_schedule` | cleaned raw tables (views) |
 | `marts` | `player_game_stats` | player × game: box score, eFG%, TS%, usage rate, Game Score |
 | `marts` | `team_pace` | team × game: possessions, pace, off/def/net rating, pre/post All-Star split |
+| `marts` | `shot_events` | field goal attempt (from play-by-play): shooter, shot type, distance, court location, make/miss, margin before the shot, clutch flag |
 | `reference` | `all_star_games` (seed) | season → All-Star Game date |
 
-Data tests cover uniqueness of every grain, accepted values, relationships, team points matching the sum of player points, and pace staying in a plausible range.
+Data tests cover uniqueness of every grain, accepted values, relationships, team points matching the sum of player points, and pace staying in a plausible range. For play-by-play, two checks run against the official box score for every team-game (all 3,941 games pass):
+- field goal attempts, makes and made threes counted from `shot_events` must match;
+- the final play-by-play score must equal the box-score points.
+
+Three play-by-play details the models handle:
+- **Neutral-site games:** at neutral sites (Mexico City, the NBA Cup semifinals in Las Vegas), the box score lists both teams as away. Scores are therefore attributed using the feed's own home/visitor marker; the final-score test caught this.
+- **Event key:** the feed's `action_number` isn't unique. Linked events (a steal and the turnover it caused, a block and the missed shot) share one, so `action_id` is the event key.
+- **Names and scores:** play-by-play has only last names, so `shot_events` takes full names from the box scores by player ID. Scores are reported only on scoring plays, so they're carried forward to every event.
 
 ### Build the rulebook index
 
@@ -140,10 +156,44 @@ How the agent works ([loop.py](src/nba_agent/agent/loop.py)):
 - **Append-only history:** the full assistant content (thinking and tool-use blocks) is sent back unchanged each step. A run stops at `end_turn`, a refusal, or after 10 steps.
 - **Cost** ([pricing.py](src/nba_agent/agent/pricing.py)): estimated from first-party list prices, counting cache reads and writes separately. An unknown model is reported as unpriced rather than $0.
 
+### Run the evals
+
+The eval harness ([evals/](src/nba_agent/evals/)) asks the agent every question in the [golden set](src/nba_agent/evals/golden.yaml) and grades each answer:
+
+| Category | Questions | Expected answer comes from |
+|---|---|---|
+| Stats | 26 | SQL over the marts, resolved at eval time so it always matches the data |
+| Play-by-play | 4 | SQL over `shot_events` |
+| Schedule | 6 | SQL over the 2026-27 schedule, fixed dates |
+| Rules | 14 | Facts checked against the rulebook text, plus the rule the answer must cite |
+
+Questions run through **Claude Code headless** (`claude -p`) with the `nba-stats` MCP server, using your Claude Code sign-in instead of an API key. Each run is isolated:
+- the agent's own system prompt replaces Claude Code's default one;
+- built-in file, shell and web tools are off, and only the MCP tools are allowed;
+- no user settings, hooks or plugins load;
+- it runs in an empty scratch folder.
+
+```bash
+claude                          # once: /login, so the CLI is signed in
+nba-eval run --dry-run          # resolve all 50 expected answers; no Claude calls
+nba-eval run --limit 3          # smoke test
+nba-eval run                    # 50 questions with the rulebook tool + the 14 rules questions without it
+nba-eval report --failures      # accuracy by category, p50/p95 latency, cost, and every wrong answer
+nba-eval export                 # data/evals/eval_results.csv for Tableau
+```
+
+- **Grading** ([grade.py](src/nba_agent/evals/grade.py)) is deterministic, so it's free and repeatable. The agent ends each reply with `ANSWER: …`:
+  - numbers must match within a per-question tolerance (a percentage like 39.1% counts for 0.391);
+  - names must match, ignoring accents, and a last name alone is accepted;
+  - rules answers must contain the required facts as whole words and cite the right rule.
+- **RAG vs no-RAG:** the baseline variant removes `search_rulebook` and answers rules questions from the model's own knowledge. By default the baseline runs only on rules questions, since stats questions don't touch the rulebook.
+- **Recorded per question:** latency, turns, tool calls, tool errors, tokens and Claude Code's reported cost, written as each question finishes. `--resume <run_id>` continues an interrupted run.
+- **Usage controls:** `--budget-per-question` caps each run, and `--model` can point the eval at a smaller model.
+
 ### Test
 
 ```bash
 pytest
 ```
 
-142 tests cover ingestion helpers, the SQL guard (allowed and rejected queries), the read-only connection, rulebook chunking and word repair, the index, hybrid search, all three tools, parallel MCP calls, and the agent loop, telemetry and CLI. Agent tests drive the real MCP server with a scripted stand-in for the Claude client ([fake_claude.py](tests/fake_claude.py)), so they run offline and cost nothing. Rulebook tests use a small deterministic embedder, so they don't need the model download.
+198 tests cover ingestion helpers, the SQL guard (allowed and rejected queries), the read-only connection, rulebook chunking and word repair, the index, hybrid search, all three tools, parallel MCP calls, the agent loop, telemetry and CLI, play-by-play ingestion, and the eval grader, golden set, Claude Code runner (against a fake `claude` executable) and harness. Agent tests drive the real MCP server with a scripted stand-in for the Claude client ([fake_claude.py](tests/fake_claude.py)), so they run offline and cost nothing. Rulebook tests use a small deterministic embedder, so they don't need the model download.
